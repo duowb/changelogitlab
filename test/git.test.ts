@@ -69,7 +69,7 @@ it('parse', async () => {
     - **cli**: Add missing \`--group\` option - by **Enzo Innocenzi** in https://github.com/duowb/changelogitlab/issues/21 [<samp>(22800)</samp>](https://github.com/duowb/changelogitlab/commit/228001d)
     - **style**: Revert \`<sup>\` style - by **Anthony Fu** [<samp>(742ae)</samp>](https://github.com/duowb/changelogitlab/commit/742ae0b)
 
-    ##### [View changes on GitHub](https://github.com/duowb/changelogitlab/compare/19cf4f84f16f1a8e1e7032bbef550c382938649d...49b0222e8d60b7f299941def7511cee0460a8149)"
+    ##### [View changes](https://github.com/duowb/changelogitlab/compare/19cf4f84f16f1a8e1e7032bbef550c382938649d...49b0222e8d60b7f299941def7511cee0460a8149)"
   `)
 })
 

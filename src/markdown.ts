@@ -111,9 +111,12 @@ export function generateMarkdown(commits: Commit[], options: ResolvedChangelogOp
   if (!lines.length)
     lines.push('*No significant changes*')
 
-  const url = `${options.baseUrl}/${options.repo}/compare/${options.from}...${options.to}`
+  const comparePath = options.repoProvider === 'gitlab'
+    ? `/-/compare/${options.from}...${options.to}`
+    : `/compare/${options.from}...${options.to}`
+  const url = `${options.baseUrl}/${options.repo}${comparePath}`
 
-  lines.push('', `##### &nbsp;&nbsp;&nbsp;&nbsp;[View changes on GitHub](${url})`)
+  lines.push('', `##### &nbsp;&nbsp;&nbsp;&nbsp;[View changes](${url})`)
 
   return convert(lines.join('\n').trim(), true)
 }

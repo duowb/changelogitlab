@@ -8,9 +8,7 @@ import { execa } from 'execa'
 import { version } from '../package.json'
 import { generate, hasTag, isRepoShallow, sendRelease, uploadAssets } from './index'
 
-const isGitLab = process.argv[1].includes('changelogits')
-
-const cli = cac(isGitLab ? 'changelogits' : 'changelogits')
+const cli = cac('changelogits')
 
 cli
   .version(version)
@@ -30,8 +28,11 @@ cli
   .option('--emoji', 'Use emojis in section titles', { default: true })
   .option('--group', 'Nest commit messages under their scopes')
   .option('--dry', 'Dry run')
-  .option('--repo-provider', 'Repository Provider (github or gitlab)', { default: isGitLab ? 'gitlab' : 'github' })
+  .option('--repo-provider', 'Repository Provider (github or gitlab)', { default: 'github' })
   .option('--assets <paths...>', 'Files to upload as assets to the release. Use quotes to prevent shell glob expansion, e.g., "--assets \'dist/*.js\'"')
+  .option('--json', 'Output changelog and metadata as JSON to stdout and exit')
+  .option('--print-md', 'Print only the generated markdown to stdout and exit')
+  .option('--quiet', 'Reduce logs (useful when capturing output)')
   .help()
 
 async function readTokenFromGitHubCli() {
@@ -52,31 +53,66 @@ async function readTokenFromGitLabCli() {
   }
 }
 
+async function readTokenFromFile(path: string) {
+  try {
+    const fs = await import('node:fs/promises')
+    const data = await fs.readFile(path, 'utf-8')
+    return data.trim()
+  }
+  catch {
+    return ''
+  }
+}
+
 cli
   .command('')
   .action(async (args) => {
     const repoProvider = args.repoProvider || 'github'
     let token = args.token
 
+    // Resolve token from CLI/env/CLI file path/env file path/CLI tools
     if (!token) {
       if (repoProvider === 'gitlab') {
-        token = process.env.GITLAB_TOKEN || process.env.GITLAB_PRIVATE_TOKEN || await readTokenFromGitLabCli()
+        token = process.env.GITLAB_TOKEN || process.env.GITLAB_PRIVATE_TOKEN || ''
+        if (!token) {
+          const envPath = process.env.GITLAB_TOKEN_PATH || process.env.GITLAB_PRIVATE_TOKEN_PATH
+          if (envPath)
+            token = await readTokenFromFile(envPath)
+        }
+        if (!token)
+          token = await readTokenFromGitLabCli()
       }
       else {
-        token = process.env.GITHUB_TOKEN || process.env.GITHUB_TOKEN_PATH || await readTokenFromGitHubCli()
+        token = process.env.GITHUB_TOKEN || ''
+        if (!token) {
+          const envPath = process.env.GITHUB_TOKEN_PATH
+          if (envPath)
+            token = await readTokenFromFile(envPath)
+        }
+        if (!token)
+          token = await readTokenFromGitHubCli()
+      }
+    }
+    else {
+      // If token looks like a file path, try read content
+      if (typeof token === 'string' && token.length < 512 && /[\\/]/.test(token)) {
+        const fileToken = await readTokenFromFile(token)
+        if (fileToken)
+          token = fileToken
       }
     }
 
-    if (token) {
+    if (token)
       args.token = token
-    }
 
     let webUrl = ''
 
     try {
-      console.log()
-      const providerName = repoProvider === 'gitlab' ? 'GitLab' : 'GitHub'
-      console.log(dim(`changelo${bold(providerName)} `) + dim(`v${version}`))
+      if (!args.quiet) {
+        console.log()
+        const providerName = repoProvider === 'gitlab' ? 'GitLab' : 'GitHub'
+        console.log(dim(`changelo${bold(providerName)} `) + dim(`v${version}`))
+      }
 
       const { config, md, commits } = await generate(args as any)
 
@@ -88,12 +124,40 @@ cli
         webUrl = `${config.baseUrl}/${config.releaseRepo}/releases/new?title=${encodeURIComponent(String(config.name || config.to))}&body=${encodeURIComponent(String(md))}&tag=${encodeURIComponent(String(config.to))}&prerelease=${config.prerelease}`
       }
 
-      console.log(cyan(config.from) + dim(' -> ') + blue(config.to) + dim(` (${commits.length} commits)`))
-      console.log(dim('--------------'))
-      console.log()
-      console.log(md.replace(/&nbsp;/g, ''))
-      console.log()
-      console.log(dim('--------------'))
+      const comparePath = config.repoProvider === 'gitlab'
+        ? `/-/compare/${config.from}...${config.to}`
+        : `/compare/${config.from}...${config.to}`
+      const compareUrl = `${config.baseUrl}/${config.repo}${comparePath}`
+
+      if (args.json) {
+        const payload = {
+          md: md.replace(/&nbsp;/g, ''),
+          from: String(config.from),
+          to: String(config.to),
+          repoProvider: config.repoProvider,
+          repo: String(config.repo),
+          releaseRepo: String(config.releaseRepo),
+          prerelease: !!config.prerelease,
+          commitsCount: commits.length,
+          compareUrl,
+        }
+        console.log(JSON.stringify(payload))
+        return
+      }
+
+      if (args.printMd) {
+        console.log(md.replace(/&nbsp;/g, ''))
+        return
+      }
+
+      if (!args.quiet) {
+        console.log(cyan(config.from) + dim(' -> ') + blue(config.to) + dim(` (${commits.length} commits)`))
+        console.log(dim('--------------'))
+        console.log()
+        console.log(md.replace(/&nbsp;/g, ''))
+        console.log()
+        console.log(dim('--------------'))
+      }
 
       function printWebUrl() {
         console.log()
