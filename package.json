@@ -1,20 +1,21 @@
 {
-  "name": "changelogithub",
+  "name": "changelogits",
   "type": "module",
   "version": "13.16.0",
   "packageManager": "pnpm@10.12.1",
-  "description": "Generate changelog for GitHub.",
+  "description": "Generate changelog for GitHub and GitLab.",
   "author": "Anthony Fu <anthonyfu117@hotmail.com>",
   "license": "MIT",
   "funding": "https://github.com/sponsors/antfu",
-  "homepage": "https://github.com/antfu/changelogithub#readme",
+  "homepage": "https://github.com/antfu/changelogits#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/antfu/changelogithub.git"
+    "url": "git+https://github.com/antfu/changelogits.git"
   },
-  "bugs": "https://github.com/antfu/changelogithub/issues",
+  "bugs": "https://github.com/antfu/changelogits/issues",
   "keywords": [
     "github",
+    "gitlab",
     "release",
     "releases",
     "conventional",
@@ -32,7 +33,9 @@
   "main": "./dist/index.mjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
-  "bin": "./cli.mjs",
+  "bin": {
+    "changelogits": "./cli.mjs"
+  },
   "files": [
     "*.mjs",
     "dist"
@@ -74,5 +77,8 @@
     "typescript": "^5.8.3",
     "unbuild": "^3.5.0",
     "vitest": "^3.2.3"
+  },
+  "volta": {
+    "node": "20.19.1"
   }
 }

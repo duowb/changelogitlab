@@ -6,27 +6,31 @@ import { blue, bold, cyan, dim, red, yellow } from 'ansis'
 import cac from 'cac'
 import { execa } from 'execa'
 import { version } from '../package.json'
-import { uploadAssets } from './github'
-import { generate, hasTagOnGitHub, isRepoShallow, sendRelease } from './index'
+import { generate, hasTag, isRepoShallow, sendRelease, uploadAssets } from './index'
 
-const cli = cac('changelogithub')
+const isGitLab = process.argv[1].includes('changelogits')
+
+const cli = cac(isGitLab ? 'changelogits' : 'changelogits')
 
 cli
   .version(version)
-  .option('-t, --token <path>', 'GitHub Token')
+  .option('-t, --token <path>', 'Repository Token (GitHub Token or GitLab Private Token)')
   .option('--from <ref>', 'From tag')
   .option('--to <ref>', 'To tag')
-  .option('--github <path>', 'GitHub Repository, e.g. antfu/changelogithub')
+  .option('--github <path>', 'GitHub Repository, e.g. antfu/changelogits')
+  .option('--gitlab <path>', 'GitLab Repository, e.g. group/project')
   .option('--release-github <path>', 'Release GitHub Repository, defaults to `github`')
+  .option('--release-gitlab <path>', 'Release GitLab Repository, defaults to `gitlab`')
   .option('--name <name>', 'Name of the release')
   .option('--contributors', 'Show contributors section')
   .option('--prerelease', 'Mark release as prerelease')
   .option('-d, --draft', 'Mark release as draft')
-  .option('--output <path>', 'Output to file instead of sending to GitHub')
+  .option('--output <path>', 'Output to file instead of sending to repository')
   .option('--capitalize', 'Should capitalize for each comment message')
   .option('--emoji', 'Use emojis in section titles', { default: true })
   .option('--group', 'Nest commit messages under their scopes')
   .option('--dry', 'Dry run')
+  .option('--repo-provider', 'Repository Provider (github or gitlab)', { default: isGitLab ? 'gitlab' : 'github' })
   .option('--assets <paths...>', 'Files to upload as assets to the release. Use quotes to prevent shell glob expansion, e.g., "--assets \'dist/*.js\'"')
   .help()
 
@@ -39,10 +43,29 @@ async function readTokenFromGitHubCli() {
   }
 }
 
+async function readTokenFromGitLabCli() {
+  try {
+    return (await execa('glab', ['auth', 'token'])).stdout.trim()
+  }
+  catch {
+    return ''
+  }
+}
+
 cli
   .command('')
   .action(async (args) => {
-    const token = args.token || process.env.GITHUB_TOKEN || await readTokenFromGitHubCli()
+    const repoProvider = args.repoProvider || 'github'
+    let token = args.token
+
+    if (!token) {
+      if (repoProvider === 'gitlab') {
+        token = process.env.GITLAB_TOKEN || process.env.GITLAB_PRIVATE_TOKEN || await readTokenFromGitLabCli()
+      }
+      else {
+        token = process.env.GITHUB_TOKEN || process.env.GITHUB_TOKEN_PATH || await readTokenFromGitHubCli()
+      }
+    }
 
     if (token) {
       args.token = token
@@ -52,10 +75,18 @@ cli
 
     try {
       console.log()
-      console.log(dim(`changelo${bold('github')} `) + dim(`v${version}`))
+      const providerName = repoProvider === 'gitlab' ? 'GitLab' : 'GitHub'
+      console.log(dim(`changelo${bold(providerName)} `) + dim(`v${version}`))
 
       const { config, md, commits } = await generate(args as any)
-      webUrl = `https://${config.baseUrl}/${config.releaseRepo}/releases/new?title=${encodeURIComponent(String(config.name || config.to))}&body=${encodeURIComponent(String(md))}&tag=${encodeURIComponent(String(config.to))}&prerelease=${config.prerelease}`
+
+      // Generate appropriate web URL based on provider
+      if (config.repoProvider === 'gitlab') {
+        webUrl = `${config.baseUrl}/${config.releaseRepo}/-/releases/new?tag_name=${encodeURIComponent(String(config.to))}&release_title=${encodeURIComponent(String(config.name || config.to))}&release_notes=${encodeURIComponent(String(md))}`
+      }
+      else {
+        webUrl = `${config.baseUrl}/${config.releaseRepo}/releases/new?title=${encodeURIComponent(String(config.name || config.to))}&body=${encodeURIComponent(String(md))}&tag=${encodeURIComponent(String(config.to))}&prerelease=${config.prerelease}`
+      }
 
       console.log(cyan(config.from) + dim(' -> ') + blue(config.to) + dim(` (${commits.length} commits)`))
       console.log(dim('--------------'))
@@ -84,14 +115,16 @@ cli
       }
 
       if (!config.token) {
-        console.error(red('No GitHub token found, specify it via GITHUB_TOKEN env. Release skipped.'))
+        const tokenEnvName = config.repoProvider === 'gitlab' ? 'GITLAB_TOKEN or GITLAB_PRIVATE_TOKEN' : 'GITHUB_TOKEN or GITHUB_TOKEN_PATH'
+        console.error(red(`No ${config.repoProvider} token found, specify it via ${tokenEnvName} env. Release skipped.`))
         process.exitCode = 1
         printWebUrl()
         return
       }
 
-      if (!await hasTagOnGitHub(config.to, config)) {
-        console.error(yellow(`Current ref "${bold(config.to)}" is not available as tags on GitHub. Release skipped.`))
+      if (!await hasTag(config.to, config)) {
+        const providerName = config.repoProvider === 'gitlab' ? 'GitLab' : 'GitHub'
+        console.error(yellow(`Current ref "${bold(config.to)}" is not available as tags on ${providerName}. Release skipped.`))
         process.exitCode = 1
         printWebUrl()
         return

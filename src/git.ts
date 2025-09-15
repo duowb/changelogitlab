@@ -1,6 +1,6 @@
 import semver from 'semver'
 
-export async function getGitHubRepo(baseUrl: string) {
+export async function getGitRepo(baseUrl: string) {
   const url = await execCommand('git', ['config', '--get', 'remote.origin.url'])
   const escapedBaseUrl = baseUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const regex = new RegExp(`${escapedBaseUrl}[\/:]([\\w\\d._-]+?)\\/([\\w\\d._-]+?)(\\.git)?$`, 'i')

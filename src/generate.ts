@@ -1,9 +1,9 @@
 import type { ChangelogOptions } from './types'
 import { getGitDiff } from 'changelogen'
 import { resolveConfig } from './config'
-import { resolveAuthors } from './github'
 import { generateMarkdown } from './markdown'
 import { parseCommits } from './parse'
+import { resolveAuthors } from './providers'
 
 export async function generate(options: ChangelogOptions) {
   const resolved = await resolveConfig(options)

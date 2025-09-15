@@ -1,55 +1,84 @@
 import type { AuthorInfo, ChangelogOptions, Commit } from './types'
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import process from 'node:process'
 /* eslint-disable no-console */
 import { notNullish } from '@antfu/utils'
 import { cyan, green, red } from 'ansis'
 import { $fetch } from 'ofetch'
 import { glob } from 'tinyglobby'
 
+export async function getProjectId(options: ChangelogOptions): Promise<number> {
+  // 优先从环境变量中获取 Project ID
+  const envProjectId = process.env.GITLAB_PROJECT_ID
+  if (envProjectId) {
+    const projectId = Number.parseInt(envProjectId, 10)
+    if (!Number.isNaN(projectId)) {
+      return projectId
+    }
+  }
+
+  // 如果环境变量中没有或无效，则通过 API 请求获取
+  const headers = getHeaders(options)
+  // GitLab uses URL-encoded project path (e.g., "group%2Fproject")
+  const encodedRepo = encodeURIComponent(options.releaseRepo as string)
+  const data = await $fetch(`${options.baseUrlApi}/projects/${encodedRepo}`, {
+    headers,
+  })
+  return data.id
+}
+
 export async function sendRelease(
   options: ChangelogOptions,
   content: string,
 ) {
   const headers = getHeaders(options)
-  let url = `${options.baseUrlApi}/repos/${options.releaseRepo}/releases`
-  let method = 'POST'
+  const projectId = await getProjectId(options)
 
+  let url = `${options.baseUrlApi}/projects/${projectId}/releases`
+  let method = 'POST'
+  let existingRelease = null
+
+  // Check if release already exists
   try {
-    const exists = await $fetch(`${options.baseUrlApi}/repos/${options.releaseRepo}/releases/tags/${options.to}`, {
+    existingRelease = await $fetch(`${options.baseUrlApi}/projects/${projectId}/releases/${options.to}`, {
       headers,
     })
-    if (exists.url) {
-      url = exists.url
-      method = 'PATCH'
+    if (existingRelease) {
+      url = `${options.baseUrlApi}/projects/${projectId}/releases/${options.to}`
+      method = 'PUT'
     }
   }
   catch {
+    // Release doesn't exist, will create new one
   }
 
   const body = {
-    body: content,
-    draft: options.draft || false,
     name: options.name || options.to,
-    prerelease: options.prerelease,
     tag_name: options.to,
+    description: content,
+    // GitLab doesn't have draft concept like GitHub, but has released flag
+    released_at: options.draft ? null : new Date().toISOString(),
   }
+
   console.log(cyan(method === 'POST'
     ? 'Creating release notes...'
     : 'Updating release notes...'),
   )
+
   const res = await $fetch(url, {
     method,
     body: JSON.stringify(body),
     headers,
   })
-  console.log(green(`Released on ${res.html_url}`))
+
+  console.log(green(`Released on ${res._links.self}`))
 }
 
 function getHeaders(options: ChangelogOptions) {
   return {
-    accept: 'application/vnd.github.v3+json',
-    authorization: `token ${options.token}`,
+    'Content-Type': 'application/json',
+    'PRIVATE-TOKEN': options.token,
   }
 }
 
@@ -63,17 +92,22 @@ export async function resolveAuthorInfo(options: ChangelogOptions, info: AuthorI
   if (info.login)
     return info
 
-  // token not provided, skip github resolving
+  // token not provided, skip gitlab resolving
   if (!options.token)
     return info
 
   try {
-    // https://docs.github.com/en/search-github/searching-on-github/searching-users#search-only-users-or-organizations
-    const q = encodeURIComponent(`${info.email} type:user in:email`)
-    const data = await $fetch(`${options.baseUrlApi}/search/users?q=${q}`, {
+    // GitLab API: Search users by email
+    const data = await $fetch(`${options.baseUrlApi}/users?search=${encodeURIComponent(info.email)}`, {
       headers: getHeaders(options),
     })
-    info.login = data.items[0].login
+    if (data.length > 0) {
+      // Find user with matching email
+      const user = data.find((u: any) => u.email === info.email || u.public_email === info.email)
+      if (user) {
+        info.login = user.username
+      }
+    }
   }
   catch {}
 
@@ -82,10 +116,11 @@ export async function resolveAuthorInfo(options: ChangelogOptions, info: AuthorI
 
   if (info.commits.length) {
     try {
-      const data = await $fetch(`${options.baseUrlApi}/repos/${options.repo}/commits/${info.commits[0]}`, {
+      const projectId = await getProjectId(options)
+      const data = await $fetch(`${options.baseUrlApi}/projects/${projectId}/repository/commits/${info.commits[0]}`, {
         headers: getHeaders(options),
       })
-      info.login = data.author.login
+      info.login = data.author_name
     }
     catch {}
   }
@@ -139,9 +174,10 @@ export async function resolveAuthors(commits: Commit[], options: ChangelogOption
     })
 }
 
-export async function hasTagOnGitHub(tag: string, options: ChangelogOptions) {
+export async function hasTagOnGitLab(tag: string, options: ChangelogOptions) {
   try {
-    await $fetch(`${options.baseUrlApi}/repos/${options.repo}/git/ref/tags/${tag}`, {
+    const projectId = await getProjectId(options)
+    await $fetch(`${options.baseUrlApi}/projects/${projectId}/repository/tags/${tag}`, {
       headers: getHeaders(options),
     })
     return true
@@ -153,6 +189,8 @@ export async function hasTagOnGitHub(tag: string, options: ChangelogOptions) {
 
 export async function uploadAssets(options: ChangelogOptions, assets: string | string[]) {
   const headers = getHeaders(options)
+  const projectId = await getProjectId(options)
+
   let assetList: string[] = []
   if (typeof assets === 'string') {
     assetList = assets.split(',').map(s => s.trim()).filter(Boolean)
@@ -184,29 +222,39 @@ export async function uploadAssets(options: ChangelogOptions, assets: string | s
     }
   }
 
-  // Get the release by tag to obtain the upload_url
-  const release = await $fetch(`${options.baseUrlApi}/repos/${options.releaseRepo}/releases/tags/${options.to}`, {
-    headers,
-  })
+  // GitLab doesn't have direct release asset upload like GitHub
+  // Instead, we need to upload files to the project and then link them to the release
+  const uploadedLinks: Array<{ name: string, url: string }> = []
 
   for (const asset of expandedAssets) {
     const filePath = path.resolve(asset)
     try {
       const fileData = await fs.readFile(filePath)
       const fileName = path.basename(filePath)
-      const contentType = 'application/octet-stream'
 
-      const uploadUrl = release.upload_url.replace('{?name,label}', `?name=${encodeURIComponent(fileName)}`)
       console.log(cyan(`Uploading ${fileName}...`))
+
+      // Upload the file to GitLab's repository files API
+      const fileContent = fileData.toString('base64')
+
       try {
-        await $fetch(uploadUrl, {
+        // Use GitLab's repository files API to upload the file
+        await $fetch(`${options.baseUrlApi}/projects/${projectId}/repository/files/${encodeURIComponent(fileName)}`, {
           method: 'POST',
-          headers: {
-            ...headers,
-            'Content-Type': contentType,
-          },
-          body: fileData,
+          headers: getHeaders(options),
+          body: JSON.stringify({
+            branch: 'main',
+            content: fileContent,
+            commit_message: `Add release asset: ${fileName}`,
+            encoding: 'base64',
+          }),
         })
+
+        uploadedLinks.push({
+          name: fileName,
+          url: `${options.baseUrl}/${options.releaseRepo}/-/blob/main/${fileName}`,
+        })
+
         console.log(green(`Uploaded ${fileName} successfully.`))
       }
       catch (error) {
@@ -215,6 +263,31 @@ export async function uploadAssets(options: ChangelogOptions, assets: string | s
     }
     catch (error) {
       console.error(red(`Failed to read file ${filePath}: ${error}`))
+    }
+  }
+
+  // Update the release description to include links to uploaded assets
+  if (uploadedLinks.length > 0) {
+    try {
+      const release = await $fetch(`${options.baseUrlApi}/projects/${projectId}/releases/${options.to}`, {
+        headers,
+      })
+
+      const assetLinks = uploadedLinks.map(link => `- [${link.name}](${link.url})`).join('\n')
+      const updatedDescription = `${release.description}\n\n## Assets\n${assetLinks}`
+
+      await $fetch(`${options.baseUrlApi}/projects/${projectId}/releases/${options.to}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({
+          description: updatedDescription,
+        }),
+      })
+
+      console.log(green('Updated release with asset links.'))
+    }
+    catch (error) {
+      console.error(red(`Failed to update release with asset links: ${error}`))
     }
   }
 }

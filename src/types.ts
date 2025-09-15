@@ -2,6 +2,8 @@ import type { ChangelogConfig, GitCommit, RepoConfig } from 'changelogen'
 
 export type ChangelogenOptions = ChangelogConfig
 
+export type RepoProviderType = 'github' | 'gitlab'
+
 export interface GitHubRepo {
   owner: string
   repo: string
@@ -66,12 +68,12 @@ export interface ChangelogOptions extends Partial<ChangelogenOptions> {
   emoji?: boolean
   /**
    * Github base url
-   * @default github.com
+   * @default https://github.com
    */
   baseUrl?: string
   /**
    * Github base API url
-   * @default api.github.com
+   * @default https://api.github.com
    */
   baseUrlApi?: string
 
@@ -100,6 +102,13 @@ export interface ChangelogOptions extends Partial<ChangelogenOptions> {
    * `--assets path1,path2` or `--assets path1 --assets path2`
    */
   assets?: string[] | string
+
+  /**
+   * RepoProvider
+   *
+   * @default `github`
+   */
+  repoProvider?: RepoProviderType
 }
 
 export type ResolvedChangelogOptions = Required<ChangelogOptions>
