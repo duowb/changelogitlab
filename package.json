@@ -4,15 +4,15 @@
   "version": "13.16.0",
   "packageManager": "pnpm@10.12.1",
   "description": "Generate changelog for GitHub and GitLab.",
-  "author": "Anthony Fu <anthonyfu117@hotmail.com>",
+  "author": "duowb <duowb@gmail.com>",
   "license": "MIT",
   "funding": "https://github.com/sponsors/antfu",
-  "homepage": "https://github.com/antfu/changelogits#readme",
+  "homepage": "https://github.com/duowb/changelogits#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/antfu/changelogits.git"
+    "url": "git+https://github.com/duowb/changelogits.git"
   },
-  "bugs": "https://github.com/antfu/changelogits/issues",
+  "bugs": "https://github.com/duowb/changelogits/issues",
   "keywords": [
     "github",
     "gitlab",
