@@ -1,7 +1,7 @@
 {
   "name": "changelogits",
   "type": "module",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "packageManager": "pnpm@10.12.1",
   "description": "Generate changelog for GitHub and GitLab.",
   "author": "duowb <duowb@gmail.com>",
