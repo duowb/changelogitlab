@@ -8,24 +8,36 @@ import { cyan, green, red } from 'ansis'
 import { $fetch } from 'ofetch'
 import { glob } from 'tinyglobby'
 
-export async function getProjectId(options: ChangelogOptions): Promise<number> {
-  // 优先从环境变量中获取 Project ID
-  const envProjectId = process.env.GITLAB_PROJECT_ID
-  if (envProjectId) {
-    const projectId = Number.parseInt(envProjectId, 10)
-    if (!Number.isNaN(projectId)) {
-      return projectId
-    }
-  }
+// 模块级缓存：避免每次都请求 GitLab 获取项目 ID
+let localProjectId: number | undefined
+const envProjectId = process.env.GITLAB_PROJECT_ID
+if (envProjectId) {
+  const parsed = Number.parseInt(envProjectId, 10)
+  if (!Number.isNaN(parsed))
+    localProjectId = parsed
+}
 
-  // 如果环境变量中没有或无效，则通过 API 请求获取
+export async function getProjectId(options: ChangelogOptions): Promise<number> {
+  // 如果已经在模块级缓存中，直接返回
+  if (typeof localProjectId === 'number' && !Number.isNaN(localProjectId))
+    return localProjectId
+
+  // 通过 API 请求获取并写入缓存
   const headers = getHeaders(options)
   // GitLab uses URL-encoded project path (e.g., "group%2Fproject")
   const encodedRepo = encodeURIComponent(options.releaseRepo as string)
-  const data = await $fetch(`${options.baseUrlApi}/projects/${encodedRepo}`, {
+  const url = `${options.baseUrlApi}/projects/${encodedRepo}`
+  const data = await $fetch<{
+    id: number
+    [x: string]: any
+  }>(url, {
     headers,
   })
-  return data.id
+  if (!data || typeof data.id !== 'number') {
+    throw new Error(`Cannot get the item id in url ${url}`)
+  }
+  localProjectId = data.id
+  return localProjectId
 }
 
 export async function sendRelease(
