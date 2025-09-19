@@ -85,6 +85,7 @@ export async function sendRelease(
   })
 
   console.log(green(`Released on ${res._links.self}`))
+  return res._links.self as string
 }
 
 function getHeaders(options: ChangelogOptions) {

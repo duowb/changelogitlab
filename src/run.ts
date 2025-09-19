@@ -17,6 +17,7 @@ export type ReleaseOutcome = 'dry-run' | 'output-saved' | 'released'
 export interface ReleaseResult {
   outcome: ReleaseOutcome
   outputPath?: string
+  releaseLink?: string
   uploadedAssets?: string[]
 }
 
@@ -112,7 +113,7 @@ export async function performRelease(
     )
   }
 
-  await sendRelease(config, md)
+  const releaseLink = await sendRelease(config, md)
 
   const assetsInput = options.assets ?? config.assets
   const normalizedAssets = normalizeAssets(assetsInput)
@@ -121,6 +122,7 @@ export async function performRelease(
 
   return {
     outcome: 'released',
+    releaseLink,
     uploadedAssets: normalizedAssets.length > 0 ? normalizedAssets : undefined,
   }
 }

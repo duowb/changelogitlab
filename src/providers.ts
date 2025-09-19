@@ -3,14 +3,14 @@ import * as github from './github'
 import * as gitlab from './gitlab'
 
 export interface RepoProvider {
-  sendRelease: (options: ChangelogOptions, content: string) => Promise<void>
+  sendRelease: (options: ChangelogOptions, content: string) => Promise<string>
   resolveAuthors: (commits: Commit[], options: ChangelogOptions) => Promise<AuthorInfo[]>
   hasTag: (tag: string, options: ChangelogOptions) => Promise<boolean>
   uploadAssets: (options: ChangelogOptions, assets: string | string[]) => Promise<void>
 }
 
 class GitHubProvider implements RepoProvider {
-  async sendRelease(options: ChangelogOptions, content: string): Promise<void> {
+  async sendRelease(options: ChangelogOptions, content: string): Promise<string> {
     return github.sendRelease(options, content)
   }
 
@@ -28,7 +28,7 @@ class GitHubProvider implements RepoProvider {
 }
 
 class GitLabProvider implements RepoProvider {
-  async sendRelease(options: ChangelogOptions, content: string): Promise<void> {
+  async sendRelease(options: ChangelogOptions, content: string): Promise<string> {
     return gitlab.sendRelease(options, content)
   }
 
@@ -59,7 +59,7 @@ export function getProvider(repoProvider: string): RepoProvider {
 }
 
 // Export unified functions that delegate to the appropriate provider
-export async function sendRelease(options: ChangelogOptions, content: string): Promise<void> {
+export async function sendRelease(options: ChangelogOptions, content: string): Promise<string> {
   const provider = getProvider(options.repoProvider || 'github')
   return provider.sendRelease(options, content)
 }
