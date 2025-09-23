@@ -2,12 +2,18 @@ import semver from 'semver'
 
 export async function getGitRepo(baseUrl: string) {
   const url = await execCommand('git', ['config', '--get', 'remote.origin.url'])
-  const escapedBaseUrl = baseUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const regex = new RegExp(`${escapedBaseUrl}[\/:]([\\w\\d._-]+?)\\/([\\w\\d._-]+?)(\\.git)?$`, 'i')
-  const match = regex.exec(url)
-  if (!match)
-    throw new Error(`Can not parse GitHub repo from url ${url}`)
-  return `${match[1]}/${match[2]}`
+  const baseUrlLength = baseUrl.length
+  const index = url.indexOf(baseUrl)
+  if (index === -1) {
+    throw new Error(`Can not parse Git repo from url ${url}`)
+  }
+  const newUrl = url.slice(index + baseUrlLength)
+  const cleanUrl = newUrl
+    .replace(baseUrl, '')
+    .replace(/\.git$/, '')
+  return cleanUrl.split('/')
+    .filter(Boolean)
+    .join('/')
 }
 
 export async function getCurrentGitBranch() {
